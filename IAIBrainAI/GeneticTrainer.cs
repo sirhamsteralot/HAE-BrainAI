@@ -10,12 +10,11 @@ namespace IAIBrainAI
     internal class GeneticTrainer
     {
         public List<NeuronPool> population;
-        public int maxPopulationSize = 50;
-        public int mutationsToMake = 20;
-        public float deleteChance = 0.2f;
-        public float weightMutationMultiplier = 1f;
-
-        public int runsBeforeMutate = 25;
+        public int maxPopulationSize = 250;
+        public int mutationsToMake = 100;
+        public float deleteChance = 0.5f;
+        public float weightMutationMultiplier = 5f;
+        public int runsToProcess = 5;
 
         Random random = new Random();
 
@@ -24,8 +23,11 @@ namespace IAIBrainAI
             population.Add(initialPool);
         }
 
-        public void TrainLoop(List<float> inputs, List<float> outputs, int epochs)
+        public void TrainLoop(List<List<float>> inputs, List<List<float>> outputs, int epochs)
         {
+            if (inputs.Count != outputs.Count)
+                throw new Exception("input count does not match output count for training!");
+
             for (int i = 0; i < epochs; i++)
             {
                 double bestOfGeneration = Train(inputs, outputs);
@@ -33,66 +35,82 @@ namespace IAIBrainAI
             }
         }
 
-        public double Train(List<float> inputs, List<float> outputs)
+        public double Train(List<List<float>> inputs, List<List<float>> outputs)
         {
-            SortedDictionary<double, int> fitnesses= new();
+            Dictionary<int, double> fitnesses= new();
 
             for (int k = 0; k < population.Count; k++)
             {
-                population[k].Activate(inputs);
-
-                for (int i = 0; i < runsBeforeMutate; i++)
-                {
-                    population[k].PushNeurons();
-                }
-
-                var actualOutput = population[k].OutputSnapshot();
-
                 double fitness = 0;
+                NeuronPool testPool = population[k];
+                
 
-                for (int i = 0; i < outputs.Count; i++)
+                for (int j = 0; j < inputs.Count; j++)
                 {
-                    fitness += Math.Abs(outputs[i] - actualOutput[i]);
+                    List<float> testInputs = inputs[j];
+                    List<float> expectedOutputs = outputs[j];
+
+                    for (int i = 0; i < runsToProcess; i++)
+                    {
+                        testPool.Activate(testInputs);
+                        testPool.PushNeurons();
+                    }
+
+                    var actualOutput = testPool.OutputSnapshot();
+
+                    for (int i = 0; i < expectedOutputs.Count; i++)
+                    {
+                        fitness += Math.Abs(expectedOutputs[i] - actualOutput[i]);
+                    }
                 }
 
-                fitnesses.TryAdd(fitness, k);
+                fitnesses[k] = fitness;
             }
+
+            var sortedFitni = fitnesses.OrderBy(x => x.Value);
 
             List<NeuronPool> oldGenerationList = new();
-            foreach (var keyvaluePair in fitnesses)
+            foreach (var keyvaluePair in sortedFitni)
             {
-                oldGenerationList.Add(population[keyvaluePair.Value]);
+                oldGenerationList.Add(population[keyvaluePair.Key]);
             }
 
-            population = GenerateNextGeneration(oldGenerationList);
+            population.Clear();
+            population.AddRange(GenerateNextGeneration(oldGenerationList));
 
-            return fitnesses.First().Key;
+            return sortedFitni.First().Value;
         }
 
         // assumes sourcegeneration list is sorted by fitness with the fittest at index 0
-        public List<NeuronPool> GenerateNextGeneration(List<NeuronPool>sourceGeneration)
+        public List<NeuronPool> GenerateNextGeneration(List<NeuronPool> sourceGeneration)
         {
             List<NeuronPool> nextGeneration = new List<NeuronPool> ();
 
-            int carryOver = Math.Max( maxPopulationSize / 10, 1);
+            int carriedOver = Math.Max( maxPopulationSize / 5, 1);
 
-            if (sourceGeneration.Count > carryOver)
+            if (sourceGeneration.Count > carriedOver)
             {
-                for(int i = 0; i < population.Count && i < sourceGeneration.Count; i++)
+                for(int i = 0; i < population.Count && i < carriedOver; i++)
                 {
-                    nextGeneration.Add(sourceGeneration[i]);
+                    NeuronPool newPool = DeepCopyPool(sourceGeneration[i]);
+                    nextGeneration.Add(newPool);
                 }
             } else
             {
-                nextGeneration.AddRange(sourceGeneration);
+                foreach (var network in sourceGeneration)
+                {
+                    NeuronPool newPool = DeepCopyPool(network);
+                    nextGeneration.Add(newPool);
+                }
             }
 
-            carryOver = nextGeneration.Count;
-            int leftToAdd = maxPopulationSize - carryOver;
+            carriedOver = nextGeneration.Count;
+            int leftToAdd = maxPopulationSize - carriedOver;
 
             for (int i = 0; i < leftToAdd; i++)
             {
-                NeuronPool newPool = CopyPool(sourceGeneration[random.Next(carryOver)]);
+                int randomSelection = random.Next(carriedOver);
+                NeuronPool newPool = DeepCopyPool(sourceGeneration[randomSelection]);
                 newPool.MutateConnections(random, mutationsToMake, weightMutationMultiplier, deleteChance);
 
                 nextGeneration.Add(newPool);
@@ -101,9 +119,14 @@ namespace IAIBrainAI
             return nextGeneration;
         }
 
-        public NeuronPool CopyPool(NeuronPool currentPool)
+        public NeuronPool DeepCopyPool(NeuronPool currentPool)
         {
-            NeuronPool nextGenPool = new NeuronPool();
+            NeuronPool newPool = new NeuronPool();
+            newPool.MutationCounter = currentPool.MutationCounter;
+            newPool.addedConnectionCounter = currentPool.addedConnectionCounter;
+            newPool.removedConnectionCounter = currentPool.removedConnectionCounter;
+            newPool.GenerationCounter = currentPool.GenerationCounter + 1;
+
             foreach (var neuron in currentPool.NeuronSet)
             {
                 if (neuron is ProbeNeuron)
@@ -114,7 +137,8 @@ namespace IAIBrainAI
                     ComputeNeuron computeNeuron = new ComputeNeuron();
                     computeNeuron.Axon.Weight = neuron.Axon.Weight;
 
-                    nextGenPool.NeuronSet.Add(computeNeuron);
+                    newPool.NeuronSet.Add(computeNeuron);
+                    continue;
                 }
 
                 if (neuron is MemoryNeuron)
@@ -122,7 +146,8 @@ namespace IAIBrainAI
                     MemoryNeuron memoryNeuron = new MemoryNeuron();
                     memoryNeuron.Axon.Weight = neuron.Axon.Weight;
 
-                    nextGenPool.NeuronSet.Add(memoryNeuron);
+                    newPool.NeuronSet.Add(memoryNeuron);
+                    continue;
                 }
             }
 
@@ -131,8 +156,8 @@ namespace IAIBrainAI
                 ProbeNeuron probeNeuron = new ProbeNeuron();
 
                 probeNeuron.Axon.Weight = neuron.Axon.Weight;
-                nextGenPool.NeuronSet.Add(probeNeuron);
-                nextGenPool.ReadProbes.Add(probeNeuron);
+                newPool.NeuronSet.Add(probeNeuron);
+                newPool.ReadProbes.Add(probeNeuron);
             }
 
             foreach (var neuron in currentPool.ActivationProbes)
@@ -140,19 +165,19 @@ namespace IAIBrainAI
                 ProbeNeuron probeNeuron = new ProbeNeuron();
 
                 probeNeuron.Axon.Weight = neuron.Axon.Weight;
-                nextGenPool.NeuronSet.Add(probeNeuron);
-                nextGenPool.ActivationProbes.Add(probeNeuron);
+                newPool.NeuronSet.Add(probeNeuron);
+                newPool.ActivationProbes.Add(probeNeuron);
             }
 
             for(int i = 0; i <  currentPool.NeuronSet.Count; i++)
             {
                 foreach (var connectTo in currentPool.NeuronSet[i].Axon.ConnectedTo.Keys)
                 {
-                    nextGenPool.NeuronSet[i].Axon.ConnectTo(connectTo, nextGenPool.NeuronSet[connectTo]);
+                    newPool.NeuronSet[i].Axon.ConnectTo(connectTo, newPool.NeuronSet[connectTo]);
                 }
             }
 
-            return nextGenPool;
+            return newPool;
         }
 
     }

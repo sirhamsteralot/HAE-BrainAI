@@ -10,6 +10,11 @@ namespace IAIBrainAI.Network
     {
         public int computeToMemoryRatio = 5;
 
+        public int addedConnectionCounter = 0;
+        public int removedConnectionCounter = 0;
+        public int MutationCounter = 0;
+        public int GenerationCounter = 0;
+
         public bool DynamicallyAddProbes { get; set; }
 
         public List<INeuron> NeuronSet = new();
@@ -20,7 +25,7 @@ namespace IAIBrainAI.Network
         {
             for (int i = 0; i < PoolSize; i++)
             {
-                if (i < (NeuronSet.Count / computeToMemoryRatio))
+                if (i < (PoolSize / computeToMemoryRatio))
                     NeuronSet.Add(new MemoryNeuron());
                 else
                     NeuronSet.Add(new ComputeNeuron());
@@ -51,21 +56,25 @@ namespace IAIBrainAI.Network
         {
             for (int i = 0; i < connectionsToMutate; i++)
             {
+                MutationCounter++;
+
                 int connectFromIndex = random.Next(NeuronSet.Count);
                 var axon = NeuronSet[connectFromIndex].Axon;
 
                 axon.Weight += mutationDeviationMultiplier * ((random.NextSingle() * 2) - 1f);
 
-                int connectToIndex = random.Next(axon.ConnectedTo.Count);
+                int connectToIndex = random.Next(NeuronSet.Count);
 
                 if (random.NextSingle() < mutateConnectedChance)
                 {
                     if (!axon.ConnectedTo.ContainsKey(connectToIndex))
                     {
+                        addedConnectionCounter++;
                         axon.ConnectTo(connectToIndex, NeuronSet[connectToIndex]);
                     }
                     else
                     {
+                        removedConnectionCounter++;
                         axon.ConnectedTo.Remove(connectToIndex);
                         //Console.WriteLine($"Removed connection! [{connectFromIndex}]-[{connectToIndex}]");
                     }

@@ -10,19 +10,30 @@ namespace IAIBrainAI
         {
             Console.WriteLine("IAIBRAINAI INITIALIZING!");
 
-            int seed = 123173;
-            Random random = new Random(seed);
+            int seed = 12311273;
+            Random random = new Random();
 
-            var activationlist = new List<float> { 1, 1};
-            var outputList = new List<float> { 1 };
+            var activationlist = new List<List<float>> 
+            { 
+                new List<float> { 1, 1 },
+                new List<float> { 1, 0 },
+                new List<float> { 0, 1 },
+                new List<float> { 0, 0 },
+            };
+            var outputList = new List<List<float>> { 
+                new List<float> { 0 },
+                new List<float> { 1 },
+                new List<float> { 1 },
+                new List<float> { 0 },
+            };
 
             neuronPool.InitializeTopology(10);
-            neuronPool.AddProbes(1, activationlist.Count);
-            neuronPool.RandomConnectionStep(random, 150);
+            neuronPool.AddProbes(1, 2);
+            neuronPool.RandomConnectionStep(random, 25);
 
             GeneticTrainer genTrain = new GeneticTrainer(neuronPool);
 
-            genTrain.TrainLoop(activationlist, outputList, 1000);
+            genTrain.TrainLoop(activationlist, outputList, 100);
 
             //PrintOutputs();
             //int cycleNr = 0;
@@ -46,11 +57,31 @@ namespace IAIBrainAI
             //        Console.ReadLine();
             //    }
             //}
+
+            for (int i = 0; i < activationlist.Count; i++)
+            {
+                Console.WriteLine($"<===========================[ {i} ]===========================>");
+                Console.Write($"Inputs: [ ");
+
+                foreach (var input in activationlist[i])
+                    Console.Write($"{input} ");
+
+                Console.WriteLine("]");
+
+                genTrain.population[0].Activate(activationlist[i]);
+
+                for (int j = 0; j < genTrain.runsToProcess; j++)
+                {
+                    genTrain.population[0].PushNeurons();
+                }
+
+                PrintOutputs(genTrain.population[0]);
+            }
         }
 
-        static void PrintOutputs()
+        static void PrintOutputs(NeuronPool pool)
         {
-            var outputSnapshot = neuronPool.OutputSnapshot();
+            var outputSnapshot = pool.OutputSnapshot();
             for (int i = 0; i < outputSnapshot.Count; i++)
                 Console.WriteLine($"outputvalue: {outputSnapshot[i]}");
         }

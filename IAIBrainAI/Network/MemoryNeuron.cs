@@ -27,7 +27,8 @@ namespace IAIBrainAI.Network
 
         public void ActivationFunction(float inputValue)
         {
-            OutputValue = inputValue * 0.1f + OutputValue * 0.9f;
+            OutputValue = inputValue * 0.75f + OutputValue * 0.25f;
+            OutputValue = 1;
             Activated = true;
         }
     }
